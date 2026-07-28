@@ -3,25 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>紡紗導紗 Web 控制台 (雙模版)</title>
-    <!-- 引入 Tailwind CSS 進行快速美化 -->
+    <title>紡紗導紗 Web 控制台 (雙模+測力完整版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 隱藏數字輸入框的上下箭頭，讓介面更乾淨 */
+        /* 隱藏數字輸入框的上下箭頭 */
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button {
             -webkit-appearance: none;
             margin: 0;
         }
+        /* 警報動畫 */
+        @keyframes flash-red {
+            0%, 100% { background-color: #fee2e2; color: #991b1b; }
+            50% { background-color: #ef4444; color: #ffffff; }
+        }
+        .alarm-active {
+            animation: flash-red 1s infinite;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen p-4 md:p-8">
 
-    <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
-        <!-- 標題區塊 -->
+    <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mb-10">
         <div class="bg-slate-800 text-white p-5 text-center">
-            <h1 class="text-2xl font-bold tracking-wider">Arduino 紡紗導紗控制台</h1>
-            <p class="text-slate-300 text-sm mt-1">USB 序列埠 / BLE 藍牙 雙模跨平台版</p>
+            <h1 class="text-2xl font-bold tracking-wider">Arduino 紡紗雙模控制台</h1>
+            <p class="text-slate-300 text-sm mt-1">馬達控制 & 測力計監控</p>
         </div>
 
         <div class="p-6 space-y-6">
@@ -31,30 +37,25 @@
                 <h2 class="text-blue-800 font-semibold mb-3 flex items-center">
                     <span class="mr-2">🔌</span> 設備連線 (請擇一)
                 </h2>
-                
                 <div class="flex gap-3">
-                    <!-- USB 連線按鈕 -->
                     <button id="connect-usb-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-2 rounded-lg transition-colors shadow-sm text-sm md:text-base" onclick="toggleUsbConnection()">
                         🔌 接線 (USB)
                     </button>
-                    <!-- 藍牙 連線按鈕 -->
                     <button id="connect-ble-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-2 rounded-lg transition-colors shadow-sm text-sm md:text-base" onclick="toggleBleConnection()">
                         📶 無線 (藍牙)
                     </button>
                 </div>
-
                 <div id="conn-status" class="mt-3 text-center text-sm font-medium text-slate-500 bg-white py-2 rounded-md border border-slate-200">
                     🔴 尚未連線
                 </div>
             </div>
 
-            <!-- 2. 參數控制區 -->
+            <!-- 2. 馬達參數控制區 -->
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <h2 class="text-slate-700 font-semibold mb-4 flex items-center">
-                    <span class="mr-2">🎛️</span> 擺動參數控制 (自動同步)
+                    <span class="mr-2">🎛️</span> 馬達擺動參數 (自動同步)
                 </h2>
                 
-                <!-- 中心角度 -->
                 <div class="mb-5">
                     <div class="flex justify-between mb-1">
                         <label class="text-sm font-medium text-slate-700">中心角度 (度)</label>
@@ -63,7 +64,6 @@
                     <input type="range" id="center-slide" min="30" max="150" value="90" class="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600" oninput="syncUI('center', 'slide')">
                 </div>
 
-                <!-- 單邊擺幅 -->
                 <div class="mb-5">
                     <div class="flex justify-between mb-1">
                         <label class="text-sm font-medium text-slate-700">單邊擺幅 (度) <span id="total-range" class="text-xs text-slate-400 font-normal ml-1">總角: 44°</span></label>
@@ -72,7 +72,6 @@
                     <input type="range" id="range-slide" min="5" max="60" value="22" class="w-full h-2 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-emerald-500" oninput="syncUI('range', 'slide')">
                 </div>
 
-                <!-- 擺動速度 -->
                 <div class="mb-2">
                     <div class="flex justify-between mb-1">
                         <label class="text-sm font-medium text-slate-700">延遲速度 (ms)</label>
@@ -82,96 +81,139 @@
                 </div>
             </div>
 
-            <!-- 3. 執行動作區 -->
+            <!-- 馬達執行動作區 -->
             <div class="grid grid-cols-2 gap-3">
-                <button id="start-btn" disabled class="disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl transition-colors shadow-sm text-lg" onclick="sendCommand('START')">
+                <button id="start-btn" disabled class="ctrl-btn disabled:opacity-50 disabled:cursor-not-allowed bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl transition-colors shadow-sm text-lg" onclick="sendCommand('START')">
                     ▶ 開始擺動
                 </button>
-                <button id="stop-btn" disabled class="disabled:opacity-50 disabled:cursor-not-allowed bg-rose-500 hover:bg-rose-600 text-white font-bold py-4 rounded-xl transition-colors shadow-sm text-lg" onclick="sendCommand('STOP')">
+                <button id="stop-btn" disabled class="ctrl-btn disabled:opacity-50 disabled:cursor-not-allowed bg-rose-500 hover:bg-rose-600 text-white font-bold py-4 rounded-xl transition-colors shadow-sm text-lg" onclick="sendCommand('STOP')">
                     ⏹ 停止擺動
                 </button>
-                <button id="cal-btn" disabled class="disabled:opacity-50 disabled:cursor-not-allowed col-span-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition-colors" onclick="sendCommand('CALIBRATE')">
+                <button id="cal-btn" disabled class="ctrl-btn disabled:opacity-50 disabled:cursor-not-allowed col-span-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition-colors" onclick="sendCommand('CALIBRATE')">
                     🎯 歸位校正至 90度
                 </button>
             </div>
 
+            <hr class="border-slate-200 my-4">
+
+            <!-- 4. 測力計顯示與監控區 -->
+            <div class="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                <h2 class="text-purple-800 font-semibold mb-3 flex items-center justify-between">
+                    <span>⚖️ 張力與重量監控</span>
+                    <div class="flex items-center gap-1">
+                        <!-- 【新增】秒數設定框 -->
+                        <span class="text-xs text-purple-700 font-medium">每</span>
+                        <input type="number" id="monitor-interval" value="1" min="1" max="120" class="w-12 text-center border border-purple-200 rounded text-xs py-1 outline-none focus:ring-2 focus:ring-purple-400" title="發送秒數">
+                        <span class="text-xs text-purple-700 font-medium">秒發送</span>
+                        <button id="monitor-btn" disabled class="ctrl-btn bg-purple-600 text-white text-xs px-3 py-1.5 rounded hover:bg-purple-700 transition-colors ml-2 shadow-sm" onclick="toggleMonitor()">
+                            ▶ 開啟監控
+                        </button>
+                    </div>
+                </h2>
+                
+                <!-- 數值大螢幕 -->
+                <div id="weight-display-box" class="bg-white rounded-lg p-5 text-center shadow-inner border border-purple-200 transition-colors duration-300">
+                    <div class="text-sm text-slate-500 font-medium mb-1">當前讀數</div>
+                    <div class="text-4xl font-black text-slate-800 tracking-tight" id="val-weight">0.000 <span class="text-lg text-slate-500 font-bold">g</span></div>
+                    <div class="text-xs text-slate-400 mt-2 font-mono" id="val-raw">Raw: 0</div>
+                </div>
+
+                <!-- 警報設定 -->
+                <div class="mt-4 bg-white p-3 rounded-lg border border-purple-100 text-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="flex items-center space-x-2 font-medium text-slate-700">
+                            <input type="checkbox" id="alarm-enable" class="form-checkbox text-purple-600 rounded">
+                            <span>開啟數值警報 (手機震動)</span>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <span class="text-xs text-slate-500">低於 (g)</span>
+                            <input type="number" id="alarm-min" value="0.5" step="0.1" class="w-full border rounded px-2 py-1 text-center bg-slate-50">
+                        </div>
+                        <div>
+                            <span class="text-xs text-slate-500">高於 (g)</span>
+                            <input type="number" id="alarm-max" value="50.0" step="0.1" class="w-full border rounded px-2 py-1 text-center bg-slate-50">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. 測力計校正區 -->
+            <div class="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                <h2 class="text-amber-800 font-semibold mb-3 flex items-center">
+                    <span class="mr-2">📝</span> 多點校正設定
+                </h2>
+                
+                <div class="flex gap-2 mb-3">
+                    <input type="number" id="cal-weight-input" placeholder="輸入已知重量 (g)" step="0.001" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+                    <button id="add-cal-btn" disabled class="ctrl-btn bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 rounded-lg text-sm transition-colors shadow-sm" onclick="addCalibration()">
+                        ➕ 紀錄綁定
+                    </button>
+                </div>
+
+                <!-- 校正清單顯示 -->
+                <div class="bg-white rounded-lg border border-amber-200 overflow-hidden text-xs">
+                    <div class="bg-amber-100 px-3 py-2 font-semibold text-amber-800 flex justify-between items-center">
+                        <span>目前校正資料 (最多10筆)</span>
+                        <button id="clear-cal-btn" disabled class="ctrl-btn text-rose-600 hover:text-rose-800 underline" onclick="clearCalibration()">清除全部</button>
+                    </div>
+                    <ul id="cal-list" class="divide-y divide-amber-100 max-h-32 overflow-y-auto">
+                        <li class="px-3 py-2 text-slate-400 text-center">尚無資料或未連線</li>
+                    </ul>
+                </div>
+                <p class="text-[10px] text-amber-600 mt-2 leading-tight">※ 說明：放上砝碼 $\rightarrow$ 輸入克數 $\rightarrow$ 點擊綁定。資料會自動存入晶片，系統會自動使用兩點內插法計算重量。</p>
+            </div>
+
         </div>
         
-        <!-- 底部狀態列 -->
         <div id="footer-status" class="bg-slate-800 text-slate-300 p-3 text-xs md:text-sm px-6 truncate">
-            系統就緒。請使用支援 Web Serial 或 Web Bluetooth 的瀏覽器。
+            系統就緒。請連接設備以啟用功能。
         </div>
     </div>
 
     <script>
-        // ==========================================
-        // 全域變數區
-        // ==========================================
-        let activeMode = null; // 當前連線模式: 'usb' 或 'ble' 或 null
+        let activeMode = null; 
 
-        // --- USB 專用變數 ---
-        let port;
-        let writer;
-        let reader;
-        let keepReading = false;
+        // --- USB ---
+        let port, writer, reader, keepReading = false;
+        let usbSyncTimer = null;
+        let readableStreamClosed, writableStreamClosed;
 
-        // --- BLE 藍牙專用變數 ---
-        let bleDevice = null;
-        let bleCharacteristic = null;
-        let bleBuffer = "";
-        const BLE_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb'; // HM-10 預設
+        // --- BLE ---
+        let bleDevice = null, bleCharacteristic = null, bleBuffer = "";
+        const BLE_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb'; 
         const BLE_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
-        // --- UI 元件綁定 ---
-        const btnUsb = document.getElementById('connect-usb-btn');
-        const btnBle = document.getElementById('connect-ble-btn');
-        const connStatus = document.getElementById('conn-status');
+        // --- 狀態控制 ---
+        let isMonitoring = false;
         const footerStatus = document.getElementById('footer-status');
         
-        // 檢查瀏覽器 API 支援度
         window.onload = () => {
-            if (!("serial" in navigator)) {
-                btnUsb.disabled = true;
-                btnUsb.classList.replace('bg-blue-600', 'bg-slate-400');
-                btnUsb.innerText = "❌ 瀏覽器不支援 USB";
-            }
-            if (!("bluetooth" in navigator)) {
-                btnBle.disabled = true;
-                btnBle.classList.replace('bg-indigo-600', 'bg-slate-400');
-                btnBle.innerText = "❌ 瀏覽器不支援藍牙";
-            }
+            if (!("serial" in navigator)) document.getElementById('connect-usb-btn').disabled = true;
+            if (!("bluetooth" in navigator)) document.getElementById('connect-ble-btn').disabled = true;
         };
 
-        // ==========================================
-        // 核心模組：統一發送與接收
-        // ==========================================
-        
-        // 模組化發送：統一由此發送字串，它會自動判斷當前走哪條線
         async function sendCommand(cmd) {
-            const fullCmd = cmd + "\n"; // 所有指令必須帶換行符號
-            
+            const fullCmd = cmd + "\n"; 
             if (activeMode === 'usb' && writer) {
-                try {
-                    await writer.write(fullCmd);
-                    console.log("USB 發送:", cmd);
-                } catch (e) { console.error("USB 發送失敗", e); }
-                
+                try { await writer.write(fullCmd); } catch (e) {}
             } else if (activeMode === 'ble' && bleCharacteristic) {
-                try {
-                    const encoder = new TextEncoder();
-                    await bleCharacteristic.writeValue(encoder.encode(fullCmd));
-                    console.log("BLE 發送:", cmd);
-                } catch (e) { console.error("BLE 發送失敗", e); }
+                try { await bleCharacteristic.writeValue(new TextEncoder().encode(fullCmd)); } catch (e) {}
             }
         }
 
-        // 模組化接收：不管字串從 USB 還是 BLE 來，只要湊成一行，都送來這裡解析
         function processArduinoMessage(msg) {
-            console.log("收到裝置訊息:", msg);
-            
             if (msg.startsWith("PONG")) {
+                if (activeMode === 'usb' && usbSyncTimer) {
+                    clearInterval(usbSyncTimer);
+                    usbSyncTimer = null;
+                    setTimeout(() => sendCommand("GET"), 300);
+                    setTimeout(() => sendCommand("GET_CAL"), 600); // 索取校正資料
+                }
                 footerStatus.innerText = "狀態：裝置辨識成功！";
-            } else if (msg.startsWith("PARAMS:")) {
+            } 
+            else if (msg.startsWith("PARAMS:")) {
                 let parts = msg.replace("PARAMS:", "").split(",");
                 if (parts.length >= 3) {
                     document.getElementById('center-slide').value = parts[0];
@@ -180,25 +222,130 @@
                     document.getElementById('range-num').value = parts[1];
                     document.getElementById('speed-slide').value = parts[2];
                     document.getElementById('speed-num').value = parts[2];
-                    
                     document.getElementById('total-range').innerText = `總角: ${parts[1] * 2}°`;
-                    let stateStr = parts[3] === "1" ? "擺動中" : "暫停中";
-                    footerStatus.innerText = `狀態：參數已同步。目前：${stateStr}`;
+                    footerStatus.innerText = "狀態：馬達參數已同步。";
                 }
-            } else if (msg.startsWith("ACK:")) {
-                footerStatus.innerText = `狀態：指令執行成功 (${msg})`;
+            } 
+            else if (msg.startsWith("WEIGHT:")) {
+                let parts = msg.substring(7).split(",");
+                if (parts.length >= 2) {
+                    let weight = parseFloat(parts[0]);
+                    let raw = parts[1];
+                    updateWeightDisplay(weight, raw);
+                }
+            }
+            else if (msg.startsWith("CAL_DATA:")) {
+                updateCalibrationList(msg.substring(9));
+            }
+            else if (msg.startsWith("ACK:")) {
+                if(msg.includes("MONITOR_ON")) isMonitoring = true;
+                if(msg.includes("MONITOR_OFF")) {
+                    isMonitoring = false;
+                    document.getElementById('val-weight').innerHTML = `0.000 <span class="text-lg text-slate-500 font-bold">g</span>`;
+                }
+                updateMonitorButton();
             }
         }
 
         // ==========================================
-        // BLE 藍牙通訊模組
+        // 測力計 UI 互動邏輯 (【修改】整合秒數設定)
+        // ==========================================
+        function toggleMonitor() {
+            if (isMonitoring) {
+                sendCommand("MONITOR:0"); // 停止
+            } else {
+                // 讀取框框內的秒數
+                let interval = parseInt(document.getElementById('monitor-interval').value);
+                // 防呆機制：限制在 1 ~ 120 秒之間
+                if (isNaN(interval) || interval < 1) interval = 1;
+                if (interval > 120) interval = 120;
+                document.getElementById('monitor-interval').value = interval; 
+                
+                // 傳送給 Arduino (例如 5秒 就發送 MONITOR:5)
+                sendCommand(`MONITOR:${interval}`);
+            }
+        }
+
+        function updateMonitorButton() {
+            const btn = document.getElementById('monitor-btn');
+            const intervalInput = document.getElementById('monitor-interval');
+            
+            if(isMonitoring) {
+                btn.innerText = "⏹ 停止監控";
+                btn.classList.replace('bg-purple-600', 'bg-rose-500');
+                btn.classList.replace('hover:bg-purple-700', 'hover:bg-rose-600');
+                intervalInput.disabled = true; // 監控中鎖定秒數更改
+            } else {
+                btn.innerText = "▶ 開啟監控";
+                btn.classList.replace('bg-rose-500', 'bg-purple-600');
+                btn.classList.replace('hover:bg-rose-600', 'hover:bg-purple-700');
+                intervalInput.disabled = false; // 停止後解鎖
+            }
+        }
+
+        function addCalibration() {
+            let weight = document.getElementById('cal-weight-input').value;
+            if(!weight || isNaN(weight)) {
+                alert("請輸入有效的重量！"); return;
+            }
+            sendCommand(`CAL_ADD:${weight}`);
+            document.getElementById('cal-weight-input').value = "";
+        }
+
+        function clearCalibration() {
+            if(confirm("確定要清除晶片內所有校正資料嗎？這無法復原！")) {
+                sendCommand("CAL_CLEAR");
+            }
+        }
+
+        function updateCalibrationList(dataStr) {
+            const listEl = document.getElementById('cal-list');
+            listEl.innerHTML = "";
+            if(!dataStr || dataStr.trim() === "") {
+                listEl.innerHTML = `<li class="px-3 py-2 text-slate-400 text-center">晶片內無校正紀錄</li>`;
+                return;
+            }
+            let points = dataStr.split("|");
+            points.forEach((pt, index) => {
+                let [raw, weight] = pt.split(",");
+                let li = document.createElement('li');
+                li.className = "px-3 py-2 flex justify-between text-slate-600 hover:bg-amber-50";
+                li.innerHTML = `<span><span class="text-amber-500 font-bold mr-2">#${index+1}</span> ${parseFloat(weight).toFixed(3)} g</span> <span class="font-mono text-slate-400 text-[10px]">Raw: ${raw}</span>`;
+                listEl.appendChild(li);
+            });
+        }
+
+        function updateWeightDisplay(weight, raw) {
+            document.getElementById('val-weight').innerHTML = `${weight.toFixed(3)} <span class="text-lg font-bold">g</span>`;
+            document.getElementById('val-raw').innerText = `Raw: ${raw}`;
+
+            let alarmEnabled = document.getElementById('alarm-enable').checked;
+            let displayBox = document.getElementById('weight-display-box');
+            
+            if (alarmEnabled) {
+                let min = parseFloat(document.getElementById('alarm-min').value);
+                let max = parseFloat(document.getElementById('alarm-max').value);
+                
+                if (weight < min || weight > max) {
+                    displayBox.classList.add('alarm-active');
+                    if ("vibrate" in navigator) {
+                        navigator.vibrate([200, 100, 200]);
+                    }
+                } else {
+                    displayBox.classList.remove('alarm-active');
+                }
+            } else {
+                displayBox.classList.remove('alarm-active');
+            }
+        }
+
+        // ==========================================
+        // 連線核心 (BLE & USB)
         // ==========================================
         async function toggleBleConnection() {
             if (activeMode === 'ble') {
                 if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
-            } else {
-                await connectBLE();
-            }
+            } else await connectBLE();
         }
 
         async function connectBLE() {
@@ -208,90 +355,69 @@
                     filters: [{ services: [BLE_SERVICE_UUID] }],
                     optionalServices: [BLE_SERVICE_UUID]
                 });
-
                 bleDevice.addEventListener('gattserverdisconnected', onDisconnectAll);
-                
                 const server = await bleDevice.gatt.connect();
                 const service = await server.getPrimaryService(BLE_SERVICE_UUID);
                 bleCharacteristic = await service.getCharacteristic(BLE_CHAR_UUID);
-                
-                // 啟動接收通知
                 bleCharacteristic.startNotifications();
                 bleCharacteristic.addEventListener('characteristicvaluechanged', handleBleNotifications);
 
                 activeMode = 'ble';
                 updateUIForConnection('ble');
                 
-                // 握手同步
-                setTimeout(() => sendCommand("PING"), 200);
-                setTimeout(() => sendCommand("GET"), 600);
-
-            } catch (error) {
-                footerStatus.innerText = "藍牙連線取消或失敗：" + error.message;
-            }
+                setTimeout(() => sendCommand("PING"), 500);
+                setTimeout(() => sendCommand("GET"), 1000);
+                setTimeout(() => sendCommand("GET_CAL"), 1500);
+            } catch (error) { footerStatus.innerText = "藍牙連線取消：" + error.message; }
         }
 
-        // 處理藍牙收到的碎裂資料封包，組合換行符號後丟給核心解析
         function handleBleNotifications(event) {
-            const value = event.target.value;
-            const decoder = new TextDecoder('utf-8');
-            bleBuffer += decoder.decode(value);
-            
+            bleBuffer += new TextDecoder('utf-8').decode(event.target.value);
             let lines = bleBuffer.split('\n');
-            bleBuffer = lines.pop(); // 保留不完整的最後一段
-            
+            bleBuffer = lines.pop(); 
             for (let line of lines) {
-                if(line.trim().length > 0) {
-                    processArduinoMessage(line.trim());
-                }
+                if(line.trim().length > 0) processArduinoMessage(line.trim());
             }
         }
 
-        // ==========================================
-        // USB 序列埠通訊模組
-        // ==========================================
         async function toggleUsbConnection() {
-            if (activeMode === 'usb') {
-                await disconnectUSB();
-            } else {
-                await connectUSB();
-            }
+            if (activeMode === 'usb') await disconnectUSB();
+            else await connectUSB();
         }
 
         async function connectUSB() {
             try {
                 port = await navigator.serial.requestPort();
                 await port.open({ baudRate: 9600 });
-                
                 const textEncoder = new TextEncoderStream();
-                textEncoder.readable.pipeTo(port.writable);
+                writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
                 writer = textEncoder.writable.getWriter();
-                
                 activeMode = 'usb';
                 updateUIForConnection('usb');
-                
                 keepReading = true;
                 readLoopUSB();
 
-                setTimeout(() => sendCommand("PING"), 200);
-                setTimeout(() => sendCommand("GET"), 600);
-            } catch (error) {
-                footerStatus.innerText = "USB連線失敗或使用者取消：" + error.message;
-            }
+                if (usbSyncTimer) clearInterval(usbSyncTimer);
+                usbSyncTimer = setInterval(() => sendCommand("PING"), 1000);
+            } catch (error) { footerStatus.innerText = "❌ USB連線失敗：" + error.message; }
         }
 
         async function disconnectUSB() {
             keepReading = false;
-            if (reader) await reader.cancel();
-            if (writer) await writer.close();
-            if (port) await port.close();
+            if (usbSyncTimer) { clearInterval(usbSyncTimer); usbSyncTimer = null; }
+            try {
+                if (reader) { await reader.cancel(); await readableStreamClosed.catch(()=>{}); }
+                if (writer) { await writer.close(); await writableStreamClosed.catch(()=>{}); }
+                if (port) await port.close();
+            } catch (error) {}
             port = null; writer = null; reader = null;
+            readableStreamClosed = null; writableStreamClosed = null;
             onDisconnectAll();
         }
 
         async function readLoopUSB() {
             const decoder = new TextDecoderStream();
-            port.readable.pipeTo(decoder.writable);
+            readableStreamClosed = port.readable.pipeTo(decoder.writable);
             reader = decoder.readable.getReader();
             let usbBuffer = "";
             try {
@@ -307,90 +433,90 @@
                         }
                     }
                 }
-            } catch (error) {
-                console.error("USB讀取錯誤:", error);
-                disconnectUSB();
-            } finally {
-                reader.releaseLock();
-            }
+            } catch (error) { disconnectUSB(); } finally { reader.releaseLock(); }
         }
 
         // ==========================================
-        // UI 狀態更新模組
+        // 共用介面更新邏輯
         // ==========================================
         function updateUIForConnection(mode) {
             setUIState(false);
+            const btnUsb = document.getElementById('connect-usb-btn');
+            const btnBle = document.getElementById('connect-ble-btn');
             if (mode === 'usb') {
                 btnUsb.innerText = "斷開 USB";
                 btnUsb.classList.replace('bg-blue-600', 'bg-rose-500');
-                btnUsb.classList.replace('hover:bg-blue-700', 'hover:bg-rose-600');
                 btnBle.disabled = true;
-                btnBle.classList.add('opacity-50', 'cursor-not-allowed');
-                connStatus.innerHTML = "🟢 <span class='text-emerald-600 font-bold'>USB 已連線</span>";
-                footerStatus.innerText = "狀態：USB 連線成功，同步參數中...";
+                btnBle.classList.add('opacity-50');
             } else if (mode === 'ble') {
                 btnBle.innerText = "斷開 藍牙";
                 btnBle.classList.replace('bg-indigo-600', 'bg-rose-500');
-                btnBle.classList.replace('hover:bg-indigo-700', 'hover:bg-rose-600');
                 btnUsb.disabled = true;
-                btnUsb.classList.add('opacity-50', 'cursor-not-allowed');
-                connStatus.innerHTML = "🔵 <span class='text-indigo-600 font-bold'>藍牙 已連線</span>";
-                footerStatus.innerText = "狀態：藍牙連線成功，同步參數中...";
+                btnUsb.classList.add('opacity-50');
             }
+            document.getElementById('conn-status').innerHTML = `🟢 已連線`;
         }
 
         function onDisconnectAll() {
             activeMode = null;
             setUIState(true);
+            isMonitoring = false;
+            updateMonitorButton();
+            document.getElementById('val-weight').innerHTML = `0.000 <span class="text-lg font-bold">g</span>`;
+            document.getElementById('val-raw').innerText = `Raw: 0`;
+            document.getElementById('weight-display-box').classList.remove('alarm-active');
             
-            // 恢復 USB 按鈕
+            const btnUsb = document.getElementById('connect-usb-btn');
             btnUsb.innerText = "🔌 接線 (USB)";
             btnUsb.disabled = false;
-            btnUsb.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-rose-500', 'hover:bg-rose-600');
-            btnUsb.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            btnUsb.classList.replace('bg-rose-500', 'bg-blue-600');
+            btnUsb.classList.remove('opacity-50');
             
-            // 恢復 BLE 按鈕
+            const btnBle = document.getElementById('connect-ble-btn');
             btnBle.innerText = "📶 無線 (藍牙)";
             btnBle.disabled = false;
-            btnBle.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-rose-500', 'hover:bg-rose-600');
-            btnBle.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+            btnBle.classList.replace('bg-rose-500', 'bg-indigo-600');
+            btnBle.classList.remove('opacity-50');
             
-            connStatus.innerHTML = "🔴 尚未連線";
+            document.getElementById('conn-status').innerHTML = "🔴 尚未連線";
             footerStatus.innerText = "狀態：設備已斷開連線";
         }
 
         function setUIState(disabled) {
-            document.getElementById('start-btn').disabled = disabled;
-            document.getElementById('stop-btn').disabled = disabled;
-            document.getElementById('cal-btn').disabled = disabled;
-            const inputs = document.querySelectorAll('input');
-            inputs.forEach(input => input.disabled = disabled);
+            document.querySelectorAll('.ctrl-btn').forEach(btn => btn.disabled = disabled);
+            document.querySelectorAll('input[type="number"], input[type="range"]').forEach(input => {
+                // 警報與秒數輸入框不被死鎖，讓使用者隨時可調
+                if(!input.id.includes('alarm') && input.id !== 'monitor-interval') {
+                    input.disabled = disabled;
+                }
+            });
         }
+
+        let syncTimer = null;
 
         function syncUI(param, source) {
             let slide = document.getElementById(`${param}-slide`);
             let num = document.getElementById(`${param}-num`);
-            
-            if (source === 'slide') {
-                num.value = slide.value;
-            } else {
-                let val = parseInt(num.value);
-                let min = parseInt(num.min);
-                let max = parseInt(num.max);
+            if (source === 'slide') num.value = slide.value;
+            else {
+                let val = parseInt(num.value), min = parseInt(num.min), max = parseInt(num.max);
                 if (val < min) num.value = min;
                 if (val > max) num.value = max;
                 slide.value = num.value;
             }
-
-            if (param === 'range') {
-                document.getElementById('total-range').innerText = `總角: ${num.value * 2}°`;
-            }
-
+            if (param === 'range') document.getElementById('total-range').innerText = `總角: ${num.value * 2}°`;
+            
             let center = document.getElementById('center-num').value;
             let range = document.getElementById('range-num').value;
             let speed = document.getElementById('speed-num').value;
             
-            sendCommand(`SET:${center},${range},${speed}`);
+            if (syncTimer) {
+                clearTimeout(syncTimer);
+            }
+            syncTimer = setTimeout(() => {
+                sendCommand(`SET:${center},${range},${speed}`);
+                console.log("已發送參數至晶片");
+            }, 500);
         }
     </script>
 </body>
