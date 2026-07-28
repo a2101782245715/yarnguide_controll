@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>紡紗導紗 Web 控制台</title>
+    <title>紡紗導紗 Web 控制台 (雙模版)</title>
     <!-- 引入 Tailwind CSS 進行快速美化 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -21,7 +21,7 @@
         <!-- 標題區塊 -->
         <div class="bg-slate-800 text-white p-5 text-center">
             <h1 class="text-2xl font-bold tracking-wider">Arduino 紡紗導紗控制台</h1>
-            <p class="text-slate-300 text-sm mt-1">Web Serial OTG 跨平台版</p>
+            <p class="text-slate-300 text-sm mt-1">USB 序列埠 / BLE 藍牙 雙模跨平台版</p>
         </div>
 
         <div class="p-6 space-y-6">
@@ -29,11 +29,20 @@
             <!-- 1. 連線設定區 -->
             <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
                 <h2 class="text-blue-800 font-semibold mb-3 flex items-center">
-                    <span class="mr-2">🔌</span> 設備連線
+                    <span class="mr-2">🔌</span> 設備連線 (請擇一)
                 </h2>
-                <button id="connect-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-sm" onclick="toggleConnection()">
-                    連接 USB / OTG 設備
-                </button>
+                
+                <div class="flex gap-3">
+                    <!-- USB 連線按鈕 -->
+                    <button id="connect-usb-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-2 rounded-lg transition-colors shadow-sm text-sm md:text-base" onclick="toggleUsbConnection()">
+                        🔌 接線 (USB)
+                    </button>
+                    <!-- 藍牙 連線按鈕 -->
+                    <button id="connect-ble-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-2 rounded-lg transition-colors shadow-sm text-sm md:text-base" onclick="toggleBleConnection()">
+                        📶 無線 (藍牙)
+                    </button>
+                </div>
+
                 <div id="conn-status" class="mt-3 text-center text-sm font-medium text-slate-500 bg-white py-2 rounded-md border border-slate-200">
                     🔴 尚未連線
                 </div>
@@ -90,138 +99,81 @@
         
         <!-- 底部狀態列 -->
         <div id="footer-status" class="bg-slate-800 text-slate-300 p-3 text-xs md:text-sm px-6 truncate">
-            系統就緒。請使用支援 Web Serial 的瀏覽器 (如 Chrome)。
+            系統就緒。請使用支援 Web Serial 或 Web Bluetooth 的瀏覽器。
         </div>
     </div>
 
     <script>
-        // 串列通訊全域變數
+        // ==========================================
+        // 全域變數區
+        // ==========================================
+        let activeMode = null; // 當前連線模式: 'usb' 或 'ble' 或 null
+
+        // --- USB 專用變數 ---
         let port;
         let writer;
         let reader;
         let keepReading = false;
 
-        const connectBtn = document.getElementById('connect-btn');
+        // --- BLE 藍牙專用變數 ---
+        let bleDevice = null;
+        let bleCharacteristic = null;
+        let bleBuffer = "";
+        const BLE_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb'; // HM-10 預設
+        const BLE_CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+        // --- UI 元件綁定 ---
+        const btnUsb = document.getElementById('connect-usb-btn');
+        const btnBle = document.getElementById('connect-ble-btn');
         const connStatus = document.getElementById('conn-status');
         const footerStatus = document.getElementById('footer-status');
         
-        // 檢查瀏覽器是否支援 Web Serial API
-        if (!("serial" in navigator)) {
-            footerStatus.innerText = "❌ 您的瀏覽器不支援 Web Serial API！請使用 Chrome、Edge，或 Android Chrome。";
-            connectBtn.disabled = true;
-            connectBtn.classList.replace('bg-blue-600', 'bg-slate-400');
-        }
-
-        async function toggleConnection() {
-            if (port) {
-                await disconnect();
-            } else {
-                await connect();
+        // 檢查瀏覽器 API 支援度
+        window.onload = () => {
+            if (!("serial" in navigator)) {
+                btnUsb.disabled = true;
+                btnUsb.classList.replace('bg-blue-600', 'bg-slate-400');
+                btnUsb.innerText = "❌ 瀏覽器不支援 USB";
             }
-        }
-
-        async function connect() {
-            try {
-                // 請求使用者選擇 USB 設備
-                port = await navigator.serial.requestPort();
-                
-                // 開啟通訊埠 (與 Arduino 相同的 9600 baud rate)
-                await port.open({ baudRate: 9600 });
-                
-                // 設定寫入串流
-                const textEncoder = new TextEncoderStream();
-                textEncoder.readable.pipeTo(port.writable);
-                writer = textEncoder.writable.getWriter();
-                
-                // 設定 UI 狀態
-                connectBtn.innerText = "斷開連線";
-                connectBtn.classList.replace('bg-blue-600', 'bg-rose-500');
-                connectBtn.classList.replace('hover:bg-blue-700', 'hover:bg-rose-600');
-                connStatus.innerHTML = "🟢 <span class='text-emerald-600 font-bold'>已成功連線至 Arduino</span>";
-                setUIState(false);
-                footerStatus.innerText = "狀態：已連線，讀取晶片記憶參數中...";
-
-                // 啟動背景讀取迴圈
-                keepReading = true;
-                readLoop();
-
-                // 發送握手與同步指令
-                await sendCommand("PING");
-                setTimeout(() => sendCommand("GET"), 400);
-
-            } catch (error) {
-                footerStatus.innerText = "連線失敗或使用者取消：" + error.message;
+            if (!("bluetooth" in navigator)) {
+                btnBle.disabled = true;
+                btnBle.classList.replace('bg-indigo-600', 'bg-slate-400');
+                btnBle.innerText = "❌ 瀏覽器不支援藍牙";
             }
-        }
+        };
 
-        async function disconnect() {
-            try {
-                keepReading = false;
-                if (reader) {
-                    await reader.cancel();
-                }
-                if (writer) {
-                    await writer.close();
-                }
-                if (port) {
-                    await port.close();
-                }
-            } catch (e) {
-                console.error("斷開連線時發生錯誤:", e);
-            } finally {
-                port = null;
-                writer = null;
-                reader = null;
-                
-                // 恢復 UI 狀態
-                connectBtn.innerText = "連接 USB / OTG 設備";
-                connectBtn.classList.replace('bg-rose-500', 'bg-blue-600');
-                connectBtn.classList.replace('hover:bg-rose-600', 'hover:bg-blue-700');
-                connStatus.innerHTML = "🔴 尚未連線";
-                setUIState(true);
-                footerStatus.innerText = "狀態：已斷開連線";
-            }
-        }
-
-        async function readLoop() {
-            const decoder = new TextDecoderStream();
-            port.readable.pipeTo(decoder.writable);
-            reader = decoder.readable.getReader();
+        // ==========================================
+        // 核心模組：統一發送與接收
+        // ==========================================
+        
+        // 模組化發送：統一由此發送字串，它會自動判斷當前走哪條線
+        async function sendCommand(cmd) {
+            const fullCmd = cmd + "\n"; // 所有指令必須帶換行符號
             
-            let buffer = "";
-            try {
-                while (keepReading) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    if (value) {
-                        buffer += value;
-                        // 以換行符號切割字串 (處理 Arduino 的 println)
-                        let lines = buffer.split('\n');
-                        buffer = lines.pop(); // 保留最後一段還沒換行的不完整字串
-                        
-                        for (let line of lines) {
-                            processArduinoMessage(line.trim());
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("讀取錯誤:", error);
-                footerStatus.innerText = "讀取錯誤，連接可能已中斷。";
-                disconnect();
-            } finally {
-                reader.releaseLock();
+            if (activeMode === 'usb' && writer) {
+                try {
+                    await writer.write(fullCmd);
+                    console.log("USB 發送:", cmd);
+                } catch (e) { console.error("USB 發送失敗", e); }
+                
+            } else if (activeMode === 'ble' && bleCharacteristic) {
+                try {
+                    const encoder = new TextEncoder();
+                    await bleCharacteristic.writeValue(encoder.encode(fullCmd));
+                    console.log("BLE 發送:", cmd);
+                } catch (e) { console.error("BLE 發送失敗", e); }
             }
         }
 
+        // 模組化接收：不管字串從 USB 還是 BLE 來，只要湊成一行，都送來這裡解析
         function processArduinoMessage(msg) {
-            console.log("收到 Arduino:", msg);
+            console.log("收到裝置訊息:", msg);
+            
             if (msg.startsWith("PONG")) {
-                footerStatus.innerText = "狀態：Arduino 設備辨識成功！";
+                footerStatus.innerText = "狀態：裝置辨識成功！";
             } else if (msg.startsWith("PARAMS:")) {
-                // 解析: PARAMS:center,range,speed,isSwinging
                 let parts = msg.replace("PARAMS:", "").split(",");
                 if (parts.length >= 3) {
-                    // 更新 UI 上所有的滑桿與數字框
                     document.getElementById('center-slide').value = parts[0];
                     document.getElementById('center-num').value = parts[0];
                     document.getElementById('range-slide').value = parts[1];
@@ -230,7 +182,6 @@
                     document.getElementById('speed-num').value = parts[2];
                     
                     document.getElementById('total-range').innerText = `總角: ${parts[1] * 2}°`;
-                    
                     let stateStr = parts[3] === "1" ? "擺動中" : "暫停中";
                     footerStatus.innerText = `狀態：參數已同步。目前：${stateStr}`;
                 }
@@ -239,27 +190,183 @@
             }
         }
 
-        async function sendCommand(cmd) {
-            if (writer) {
-                try {
-                    await writer.write(cmd + "\n");
-                    console.log("發送:", cmd);
-                } catch (e) {
-                    footerStatus.innerText = "發送失敗：" + e;
+        // ==========================================
+        // BLE 藍牙通訊模組
+        // ==========================================
+        async function toggleBleConnection() {
+            if (activeMode === 'ble') {
+                if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+            } else {
+                await connectBLE();
+            }
+        }
+
+        async function connectBLE() {
+            try {
+                footerStatus.innerText = "狀態：正在搜尋藍牙裝置...";
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [BLE_SERVICE_UUID] }],
+                    optionalServices: [BLE_SERVICE_UUID]
+                });
+
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnectAll);
+                
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+                bleCharacteristic = await service.getCharacteristic(BLE_CHAR_UUID);
+                
+                // 啟動接收通知
+                bleCharacteristic.startNotifications();
+                bleCharacteristic.addEventListener('characteristicvaluechanged', handleBleNotifications);
+
+                activeMode = 'ble';
+                updateUIForConnection('ble');
+                
+                // 握手同步
+                setTimeout(() => sendCommand("PING"), 200);
+                setTimeout(() => sendCommand("GET"), 600);
+
+            } catch (error) {
+                footerStatus.innerText = "藍牙連線取消或失敗：" + error.message;
+            }
+        }
+
+        // 處理藍牙收到的碎裂資料封包，組合換行符號後丟給核心解析
+        function handleBleNotifications(event) {
+            const value = event.target.value;
+            const decoder = new TextDecoder('utf-8');
+            bleBuffer += decoder.decode(value);
+            
+            let lines = bleBuffer.split('\n');
+            bleBuffer = lines.pop(); // 保留不完整的最後一段
+            
+            for (let line of lines) {
+                if(line.trim().length > 0) {
+                    processArduinoMessage(line.trim());
                 }
             }
+        }
+
+        // ==========================================
+        // USB 序列埠通訊模組
+        // ==========================================
+        async function toggleUsbConnection() {
+            if (activeMode === 'usb') {
+                await disconnectUSB();
+            } else {
+                await connectUSB();
+            }
+        }
+
+        async function connectUSB() {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                
+                const textEncoder = new TextEncoderStream();
+                textEncoder.readable.pipeTo(port.writable);
+                writer = textEncoder.writable.getWriter();
+                
+                activeMode = 'usb';
+                updateUIForConnection('usb');
+                
+                keepReading = true;
+                readLoopUSB();
+
+                setTimeout(() => sendCommand("PING"), 200);
+                setTimeout(() => sendCommand("GET"), 600);
+            } catch (error) {
+                footerStatus.innerText = "USB連線失敗或使用者取消：" + error.message;
+            }
+        }
+
+        async function disconnectUSB() {
+            keepReading = false;
+            if (reader) await reader.cancel();
+            if (writer) await writer.close();
+            if (port) await port.close();
+            port = null; writer = null; reader = null;
+            onDisconnectAll();
+        }
+
+        async function readLoopUSB() {
+            const decoder = new TextDecoderStream();
+            port.readable.pipeTo(decoder.writable);
+            reader = decoder.readable.getReader();
+            let usbBuffer = "";
+            try {
+                while (keepReading) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (value) {
+                        usbBuffer += value;
+                        let lines = usbBuffer.split('\n');
+                        usbBuffer = lines.pop();
+                        for (let line of lines) {
+                            if(line.trim().length > 0) processArduinoMessage(line.trim());
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("USB讀取錯誤:", error);
+                disconnectUSB();
+            } finally {
+                reader.releaseLock();
+            }
+        }
+
+        // ==========================================
+        // UI 狀態更新模組
+        // ==========================================
+        function updateUIForConnection(mode) {
+            setUIState(false);
+            if (mode === 'usb') {
+                btnUsb.innerText = "斷開 USB";
+                btnUsb.classList.replace('bg-blue-600', 'bg-rose-500');
+                btnUsb.classList.replace('hover:bg-blue-700', 'hover:bg-rose-600');
+                btnBle.disabled = true;
+                btnBle.classList.add('opacity-50', 'cursor-not-allowed');
+                connStatus.innerHTML = "🟢 <span class='text-emerald-600 font-bold'>USB 已連線</span>";
+                footerStatus.innerText = "狀態：USB 連線成功，同步參數中...";
+            } else if (mode === 'ble') {
+                btnBle.innerText = "斷開 藍牙";
+                btnBle.classList.replace('bg-indigo-600', 'bg-rose-500');
+                btnBle.classList.replace('hover:bg-indigo-700', 'hover:bg-rose-600');
+                btnUsb.disabled = true;
+                btnUsb.classList.add('opacity-50', 'cursor-not-allowed');
+                connStatus.innerHTML = "🔵 <span class='text-indigo-600 font-bold'>藍牙 已連線</span>";
+                footerStatus.innerText = "狀態：藍牙連線成功，同步參數中...";
+            }
+        }
+
+        function onDisconnectAll() {
+            activeMode = null;
+            setUIState(true);
+            
+            // 恢復 USB 按鈕
+            btnUsb.innerText = "🔌 接線 (USB)";
+            btnUsb.disabled = false;
+            btnUsb.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-rose-500', 'hover:bg-rose-600');
+            btnUsb.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            
+            // 恢復 BLE 按鈕
+            btnBle.innerText = "📶 無線 (藍牙)";
+            btnBle.disabled = false;
+            btnBle.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-rose-500', 'hover:bg-rose-600');
+            btnBle.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+            
+            connStatus.innerHTML = "🔴 尚未連線";
+            footerStatus.innerText = "狀態：設備已斷開連線";
         }
 
         function setUIState(disabled) {
             document.getElementById('start-btn').disabled = disabled;
             document.getElementById('stop-btn').disabled = disabled;
             document.getElementById('cal-btn').disabled = disabled;
-            
             const inputs = document.querySelectorAll('input');
             inputs.forEach(input => input.disabled = disabled);
         }
 
-        // 同步滑桿與數字輸入框
         function syncUI(param, source) {
             let slide = document.getElementById(`${param}-slide`);
             let num = document.getElementById(`${param}-num`);
@@ -267,7 +374,6 @@
             if (source === 'slide') {
                 num.value = slide.value;
             } else {
-                // 邊界檢查
                 let val = parseInt(num.value);
                 let min = parseInt(num.min);
                 let max = parseInt(num.max);
@@ -280,7 +386,6 @@
                 document.getElementById('total-range').innerText = `總角: ${num.value * 2}°`;
             }
 
-            // 組裝 SET 指令發送給 Arduino
             let center = document.getElementById('center-num').value;
             let range = document.getElementById('range-num').value;
             let speed = document.getElementById('speed-num').value;
